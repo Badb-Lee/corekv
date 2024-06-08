@@ -11,7 +11,7 @@ type WALFile struct {
 }
 
 func (wf *WALFile) Close() error {
-	if err := wf.f.Close(); err != nil {
+	if err := wf.f.close(); err != nil {
 		return err
 	}
 	return nil
@@ -19,7 +19,7 @@ func (wf *WALFile) Close() error {
 }
 
 func OpenWalFile(opt *Options) *WALFile {
-	return &WALFile{f: OpenLogFile(opt)}
+	return &WALFile{f: openLogFile(opt)}
 }
 
 // 将操作写入aof文件中
@@ -27,5 +27,5 @@ func (wf *WALFile) Write(entry *codec.Entry) error {
 	// 写入的过程是简单的同步写
 	// 序列化为磁盘结构
 	walData := codec.WALCodec(entry)
-	return wf.f.Write(walData)
+	return wf.f.write(walData)
 }

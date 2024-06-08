@@ -31,7 +31,7 @@ func (m *memTable) close() error {
 }
 
 // Set 写到memtable中去
-func (m *memTable) Set(entry *codec.Entry) error {
+func (m *memTable) set(entry *codec.Entry) error {
 	// memtable执行waf策略，首先写到wal文件当中
 	if err := m.wal.Write(entry); err != nil {
 		return err
@@ -44,12 +44,12 @@ func (m *memTable) Set(entry *codec.Entry) error {
 }
 
 // Get 获取Get
-func (m *memTable) Get(key []byte) (*codec.Entry, error) {
+func (m *memTable) get(key []byte) (*codec.Entry, error) {
 	//从跳表当中获得
 	return m.sl.Search(key), nil
 }
 
-func NewMemTable() (*memTable, []*memTable) {
+func newMemTable(opt *Options) (*memTable, []*memTable) {
 	/**
 	这里不能用：fileOpt := &file.Options{name: "hello"}
 	因为name是未导出的，相当于Java中的private，不能在别的包中进行使用

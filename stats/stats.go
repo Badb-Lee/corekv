@@ -28,7 +28,7 @@ func (s *Stats) startStats() {
 	}
 }
 
-func newStats() *Stats {
+func newStats(opt *Options) *Stats {
 	s := &Stats{}
 	s.closer = utils.NewCloser(1)
 	s.EntryNum = 1

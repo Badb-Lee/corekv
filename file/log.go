@@ -10,14 +10,14 @@ type LogFile struct {
 	f *os.File
 }
 
-func (lf *LogFile) Close() error {
+func (lf *LogFile) close() error {
 	if err := lf.f.Close(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (ls *LogFile) Write(bytes []byte) error {
+func (ls *LogFile) write(bytes []byte) error {
 	if _, err := ls.f.Write(append(bytes, '\n')); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ type Options struct {
 	name string
 }
 
-func OpenLogFile(opt *Options) *LogFile {
+func openLogFile(opt *Options) *LogFile {
 	lf := &LogFile{}
 	lf.f, _ = os.Create(opt.name)
 	return lf
