@@ -8,6 +8,9 @@ import (
 type Options struct {
 }
 
+/*
+* vlog是用来实现kv分离
+ */
 type VLog struct {
 	closer *utils.Closer
 }
