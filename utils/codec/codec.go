@@ -5,3 +5,7 @@ func WALCodec(entry *Entry) []byte {
 	return []byte{}
 
 }
+
+func ValuePtrCodec(ptr *ValuePtr) []byte {
+	return []byte{}
+}

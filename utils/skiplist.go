@@ -24,7 +24,7 @@ func (sl *SkipList) Close() error {
 
 // Search 查找
 func (sl *SkipList) Search(key []byte) *codec.Entry {
-	return sl.head.member
+	return sl.head.next.member
 }
 
 // Insert 插入

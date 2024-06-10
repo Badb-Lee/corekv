@@ -16,7 +16,7 @@ type VLog struct {
 }
 
 // NewVLog 新建VLog
-func NewVLog() *VLog {
+func NewVLog(opt *Options) *VLog {
 	v := &VLog{}
 	v.closer = utils.NewCloser(1)
 	return v
@@ -39,4 +39,8 @@ func (v *VLog) Set(entry *codec.Entry) error {
 
 func (v *VLog) Get(entry *codec.Entry) (*codec.Entry, error) {
 	return nil, nil
+}
+
+func (v *VLog) Close() error {
+	return nil
 }

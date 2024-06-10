@@ -21,7 +21,7 @@ type LSM struct {
 type Options struct {
 }
 
-func (lsm *LSM) close() error {
+func (lsm *LSM) Close() error {
 	if err := lsm.memTable.close(); err != nil {
 		return err
 	}
@@ -39,7 +39,7 @@ func (lsm *LSM) close() error {
 	return nil
 }
 
-func newLSM(opt *Options) *LSM {
+func NewLSM(opt *Options) *LSM {
 	lsm := &LSM{
 		option: opt,
 	}
@@ -53,7 +53,7 @@ func newLSM(opt *Options) *LSM {
 	return lsm
 }
 
-func (lsm *LSM) startMerge() {
+func (lsm *LSM) StartMerge() {
 	defer lsm.closer.Done()
 	for {
 		select {
@@ -64,7 +64,7 @@ func (lsm *LSM) startMerge() {
 	}
 }
 
-func (lsm *LSM) set(entry *codec.Entry) error {
+func (lsm *LSM) Set(entry *codec.Entry) error {
 	// 写的时候需要检查memtable是不是写满了
 	// 如果写满了需要将当前memtable的内容放入immutable中
 	// 否则直接写入memtable
@@ -83,13 +83,14 @@ func (lsm *LSM) set(entry *codec.Entry) error {
 	return nil
 }
 
-func (lsm *LSM) get(key []byte) (*codec.Entry, error) {
+func (lsm *LSM) Get(key []byte) (*codec.Entry, error) {
 	//找的顺序 memtable -> immutable -> 磁盘
 	var (
 		entry *codec.Entry
 		err   error
 	)
-	if entry, err := lsm.memTable.get(key); err != nil {
+	// 注意这里是entry != nil
+	if entry, err := lsm.memTable.get(key); entry != nil {
 		return entry, err
 	}
 

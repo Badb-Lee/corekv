@@ -18,9 +18,9 @@ func (lf *LogFile) close() error {
 }
 
 func (ls *LogFile) write(bytes []byte) error {
-	if _, err := ls.f.Write(append(bytes, '\n')); err != nil {
-		return err
-	}
+	//if _, err := ls.f.Write(append(bytes, '\n')); err != nil {
+	//	return err
+	//}
 	return nil
 }
 

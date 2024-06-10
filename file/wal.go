@@ -1,6 +1,8 @@
 package file
 
-import "corekv/utils/codec"
+import (
+	"corekv/utils/codec"
+)
 
 /**
 是wal文件，用来执行wal策略的

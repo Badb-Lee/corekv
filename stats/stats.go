@@ -13,11 +13,11 @@ type Stats struct {
 	EntryNum int64         //统计一共有多少kv数据
 }
 
-func (s *Stats) close() error {
+func (s *Stats) Close() error {
 	return nil
 }
 
-func (s *Stats) startStats() {
+func (s *Stats) StartStats() {
 	defer s.closer.Done()
 
 	for {
@@ -28,7 +28,7 @@ func (s *Stats) startStats() {
 	}
 }
 
-func newStats(opt *Options) *Stats {
+func NewStats(opt *Options) *Stats {
 	s := &Stats{}
 	s.closer = utils.NewCloser(1)
 	s.EntryNum = 1

@@ -6,7 +6,7 @@ type Options struct {
 	ValueThreshold int64
 }
 
-func newDefaultOptions() *Options {
+func NewDefaultOptions() *Options {
 	opt := &Options{ValueThreshold: utils.DefaultValueThreshold}
 	return opt
 }
