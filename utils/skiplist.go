@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"corekv/utils/codec"
+	"fmt"
 	"math/rand"
 	"sync"
 )
@@ -74,6 +75,25 @@ func (sl *SkipList) Search(key []byte) *codec.Entry {
 	return nil
 }
 
+func (sl *SkipList) PrintElement() {
+	sl.lock.Lock()
+	defer sl.lock.Unlock()
+
+	header, maxLevel := sl.header, sl.maxLevel
+	prev := header
+
+	for i := maxLevel; i >= 0; i-- {
+		// 当前层的第一个
+		curLevel := prev.levels[i]
+		for cur := curLevel; cur != nil; cur = curLevel.levels[i] {
+			fmt.Print(cur.entry.Key, "--")
+			curLevel = cur.levels[i]
+
+		}
+		fmt.Println()
+	}
+}
+
 // Add 插入
 func (sl *SkipList) Add(entry *codec.Entry) error {
 	sl.lock.Lock()
@@ -88,6 +108,7 @@ func (sl *SkipList) Add(entry *codec.Entry) error {
 	// 2、其次从每一层level的第一个元素开始
 	for i := maxLevel; i >= 0; i-- {
 		for cur := prev.levels[i]; cur != nil; cur = prev.levels[i] {
+			// 升序排列
 			if comp := sl.compare(keyScore, entry.Key, cur); comp <= 0 {
 				if comp == 0 {
 					// 说明插入元素的key存在列表当中，直接进行更新
