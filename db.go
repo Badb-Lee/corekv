@@ -36,6 +36,7 @@ func Open(options *Options) *DB {
 	db.vlog = vlog.NewVLog(&vlog.Options{})
 	// 初始化统计信息
 	db.stats = newStats(options)
+	// 启动以下三个协程：
 	// 启动 sstable 的合并压缩过程
 	go db.lsm.StartMerge()
 	// 启动 vlog gc 过程
@@ -60,12 +61,20 @@ func (db *DB) Close() error {
 
 func (db *DB) Del(key []byte) error {
 	// 写入一个值为nil的entry 作为墓碑消息实现删除
+	// 不会真正的进行删除，因为删除会移动数据，这时候才会使得性能损耗最小，但是会浪费一部分的存储空间，这也是一部分权衡
 	return db.Set(&codec.Entry{
 		Key:       key,
 		Value:     nil,
 		ExpiresAt: 0,
 	})
 }
+
+/*
+*
+从以下代码也可以看出来kv分离的核心
+如果value足够小，也可以不用进行分离，减少写放大
+因为分离的话，需要写两次，读两次，对于ssd还好
+*/
 func (db *DB) Set(data *codec.Entry) error {
 	// 做一些必要性的检查
 	// 如果value 大于一个阈值 则创建值指针，并将其写入vlog中
@@ -79,8 +88,11 @@ func (db *DB) Set(data *codec.Entry) error {
 	}
 	// 写入LSM, 如果写值指针不空则替换值entry.value的值
 	if valuePtr != nil {
+		// 把值指针编码成一个字节数组，替换掉之前的data
 		data.Value = codec.ValuePtrCodec(valuePtr)
 	}
+
+	//对lsm进行set
 	return db.lsm.Set(data)
 }
 func (db *DB) Get(key []byte) (*codec.Entry, error) {

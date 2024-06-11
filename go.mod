@@ -1,3 +1,3 @@
 module github.com/hardcore-os/corekv
 
-go 1.16
+go 1.22

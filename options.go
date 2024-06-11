@@ -7,6 +7,7 @@ type Options struct {
 }
 
 // NewDefaultOptions 返回默认的options
+// 初始化这个结构体
 func NewDefaultOptions() *Options {
 	opt := &Options{}
 	opt.ValueThreshold = utils.DefaultValueThreshold

@@ -8,8 +8,11 @@ import (
 )
 
 func TestAPI(t *testing.T) {
+	//初始化这个配置文件
 	opt := NewDefaultOptions()
+	//相当于初始化db
 	db := Open(opt)
+	// defer 相当于Java中的try catch
 	defer func() { _ = db.Close() }()
 	// 写入
 	e := codec.NewEntry([]byte("hello"), []byte("coreKV")).WithTTL(1 * time.Second)
@@ -24,8 +27,10 @@ func TestAPI(t *testing.T) {
 	}
 	// 迭代器
 	iter := db.NewIterator(&iterator.Options{
+		// 是否要使用前缀查询
 		Prefix: []byte("hello"),
-		IsAsc:  false,
+		// 升序降序的配置
+		IsAsc: false,
 	})
 	defer func() { _ = iter.Close() }()
 	for iter.Rewind(); iter.Valid(); iter.Next() {

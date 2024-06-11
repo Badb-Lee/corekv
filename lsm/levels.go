@@ -51,6 +51,7 @@ func newLevelManager(opt *Options) *levelManager {
 	lm.opt = opt
 	// 读取manifest文件构建管理器
 	lm.loadManifest()
+	// 用于新建levelhamdle，cache
 	lm.build()
 	return lm
 }

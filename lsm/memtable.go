@@ -41,8 +41,9 @@ func (m *memTable) Get(key []byte) (*codec.Entry, error) {
 	return m.sl.Search(key), nil
 }
 
-//recovery
+// recovery
 func recovery(opt *Options) (*memTable, []*memTable) {
 	fileOpt := &file.Options{}
+	//如果有wal就进行加载，否则就返回一个memTable
 	return &memTable{wal: file.OpenWalFile(fileOpt), sl: utils.NewSkipList()}, []*memTable{}
 }
