@@ -32,12 +32,12 @@ func (m *memTable) close() error {
 
 // Set 写到memtable中去
 func (m *memTable) set(entry *codec.Entry) error {
-	// memtable执行waf策略，首先写到wal文件当中
+	// memtable执行waf策略，首先写到wal文件当中\
 	if err := m.wal.Write(entry); err != nil {
 		return err
 	}
 	// 写到memtable中
-	if err := m.sl.Insert(entry); err != nil {
+	if err := m.sl.Add(entry); err != nil {
 		return err
 	}
 	return nil
