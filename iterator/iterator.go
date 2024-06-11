@@ -13,6 +13,7 @@ import "corekv/utils/codec"
 type Iterator interface {
 	Next()
 	Valid() bool
+	// 从集合的第一个元素开始
 	Rewind()
 	Item() Item
 	Close() error

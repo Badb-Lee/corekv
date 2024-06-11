@@ -37,7 +37,7 @@ func (m *memTable) set(entry *codec.Entry) error {
 		return err
 	}
 	// 写到memtable中
-	if err := m.sl.Insert(entry); err != nil {
+	if err := m.sl.Add(entry); err != nil {
 		return err
 	}
 	return nil
