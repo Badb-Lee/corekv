@@ -53,6 +53,11 @@ func (sl *SkipList) Search(key []byte) *codec.Entry {
 	sl.lock.Lock()
 	defer sl.lock.Unlock()
 	// 为什么需要计算？
+	// 原因如下：
+	// 1、统一的比较标准，可以将键换成各种类型，比如字符串、数字、map等
+	// 2、有时候需要根据自定义规则进行排序
+	// 3、减少比较次数，如果提供有效的比较机制，使用整数而非字符串，那么会提高性能
+	// 4、复用代码，比较的地方有很多，直接提出来方便使用
 	keyScore := sl.calcScore(key)
 	header, maxLevel := sl.header, sl.maxLevel
 	prev := header

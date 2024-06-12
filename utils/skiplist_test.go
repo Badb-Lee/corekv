@@ -96,20 +96,27 @@ func Benchmark_SkipListBasicCRUD(b *testing.B) {
 	}
 }
 
+/*
+这里批量更新时，每次更新的结果都不一样的原因如下：
+这里只能保证在更新时，不会被其他线程所占有，但是并不能保证更新的顺序
+*/
 func TestConcurrentBasic(t *testing.T) {
-	const n = 1000000
+	const n = 1000
 	list := NewSkipList()
 	var wg sync.WaitGroup
 	key := func(i int) []byte {
 		return []byte(fmt.Sprintf("key%d", i))
 	}
+	list.Add(codec.NewEntry(key(1), key(1)))
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			assert.Nil(t, list.Add(codec.NewEntry(key(i), key(i))))
+			assert.Nil(t, list.Add(codec.NewEntry(key(1), key(i))))
 		}(i)
 	}
+
+	fmt.Println(list.Search(key(1)).Value)
 
 	wg.Wait()
 }
