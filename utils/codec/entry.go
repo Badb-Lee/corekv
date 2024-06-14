@@ -16,6 +16,25 @@ type ValueStruct struct {
 	Version uint64 // This field is not serialized. Only for internal usage.
 }
 
+// value只持久化具体的value值和过期时间
+// 编码size大小
+func (vs *ValueStruct) EncodedSize() uint32 {
+	sz := len(vs.Value) + 1 // meta
+	enc := sizeVarint(vs.ExpiresAt)
+	return uint32(sz + enc)
+}
+
+func sizeVarint(x uint64) (n int) {
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
+}
+
 func NewEntry(key, value []byte) *Entry {
 
 	return &Entry{

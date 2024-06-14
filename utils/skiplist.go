@@ -3,6 +3,8 @@ package utils
 import (
 	"corekv/utils/codec"
 	"math"
+	"sync/atomic"
+	_ "unsafe"
 )
 
 /**
@@ -19,7 +21,7 @@ type node struct {
 	// 将offset和length合并
 	value     uint64
 	keyOffset uint32
-	keySize   uint32
+	keySize   uint16
 	// 所处的层级，代表了这个节点有几个next指针
 	height uint16
 
@@ -41,12 +43,119 @@ type SkipList struct {
 	height int32
 	// 头节点
 	headOffset uint32
-	// 引用计数
+	// 引用计数，用于追踪一个对象被引用的次数，当引用计数达到0的时候，可以安全的释放该内存占用的内存
 	ref int32
 	// 内存池
 	arena   *Arena
 	OnClose func()
 }
+
+func (s *SkipList) IncrRef() {
+	atomic.AddInt32(&s.ref, 1)
+}
+
+// DecrRef 如果引用为0，回收跳表
+func (s *SkipList) DecrRef() {
+	newRef := atomic.AddInt32(&s.ref, -1)
+	if newRef > 0 {
+		return
+	}
+
+	if s.OnClose != nil {
+		s.OnClose()
+	}
+
+	s.arena = nil
+}
+
+func newNode(arena *Arena, key []byte, v ValueStruct, height int) *node {
+	nodeOffset := arena.putNode(height)
+	keyOffset := arena.putKey(key)
+	// 将offset和size合并为一个val
+	val := encodeValue(arena.putVal(v), v.EncodedSize())
+
+	node := arena.getNode(nodeOffset)
+	node.height = uint16(height)
+	node.value = val
+	node.keyOffset = keyOffset
+	node.keySize = uint16(len(key))
+	return node
+}
+
+func encodeValue(valOffset uint32, valSize uint32) uint64 {
+	// 前32位是size，后32位是offset
+	return uint64(valSize)<<32 | uint64(valOffset)
+}
+
+func decodeValue(value uint64) (valOffset uint32, valSize uint32) {
+	// 也就是只保留后面的n位
+	valOffset = uint32(value)
+	valSize = uint32(value >> 32)
+	return valOffset, valSize
+}
+
+func NewSkipList(arenaSize int64) *SkipList {
+	// 申请一块内存池大小
+	arena := newArena(arenaSize)
+	// 这里是空的头节点，保证head拥有最大高度
+	head := newNode(arena, nil, ValueStruct{}, maxHeight)
+	ho := arena.getNodeOffset(head)
+	return &SkipList{
+		height:     1,
+		headOffset: ho,
+		arena:      arena,
+		ref:        1,
+	}
+}
+
+// 获取value的偏移量
+func (s *node) getValueOffset() (uint32, uint32) {
+	value := atomic.LoadUint64(&s.value)
+	return decodeValue(value)
+}
+
+// 获取key
+func (s *node) key(arena *Arena) []byte {
+	return arena.getKey(s.keyOffset, s.keySize)
+}
+
+// 设置node的value
+func (s *node) setValue(vo uint64) {
+	atomic.StoreUint64(&s.value, vo)
+}
+
+// 下一个节点的偏移量
+func (s *node) getNexOffset(h int) uint32 {
+	return atomic.LoadUint32(&s.tower[h])
+}
+
+// 设置一个新的next指针
+func (s *node) casNextOffset(h int, old, val uint32) bool {
+	return atomic.CompareAndSwapUint32(&s.tower[h], old, val)
+}
+
+// 随机高度
+func (s *SkipList) randomHeight() int {
+	h := 1
+	for h < maxHeight && FastRand() <= heightIncrease {
+		h++
+	}
+
+	return h
+}
+
+// 某个节点某一层的下一个节点
+func (s *SkipList) getNext(n *node, height int) *node {
+	return s.arena.getNode(n.getNexOffset(height))
+}
+
+// 获取头节点
+func (s *SkipList) getHead() *node {
+	return s.arena.getNode(s.headOffset)
+}
+
+//go:linkname FastRand runtime.fastrand
+func FastRand() uint32
 
 //func (sl *SkipList) Close() error {
 //	return nil
