@@ -54,11 +54,12 @@ func (f Filter) MayContain(h uint32) bool {
 // A good bitsPerKey value is 10, which yields a filter with ~ 1% false
 // positive rate.
 func NewFilter(keys []uint32, bitsPerKey int) Filter {
-	return Filter(appendFilter(keys, bitsPerKey))
+	return appendFilter(keys, bitsPerKey)
 }
 
 // BloomBitsPerKey returns the bits per key required by bloomfilter based on
 // the false positive rate.
+// 最优的位数组m，参数是sst的数据量和可以接受的假阳性率
 func BloomBitsPerKey(numEntries int, fp float64) int {
 	size := -1 * float64(numEntries) * math.Log(fp) / math.Pow(float64(0.69314718056), 2)
 	locs := math.Ceil(size / float64(numEntries))
@@ -70,6 +71,7 @@ func appendFilter(keys []uint32, bitsPerKey int) []byte {
 		bitsPerKey = 0
 	}
 	// 0.69 is approximately ln(2).
+	// 哈希函数个数
 	k := uint32(float64(bitsPerKey) * 0.69)
 	if k < 1 {
 		k = 1
@@ -77,7 +79,7 @@ func appendFilter(keys []uint32, bitsPerKey int) []byte {
 	if k > 30 {
 		k = 30
 	}
-
+	// 一共需要的个数
 	nBits := len(keys) * int(bitsPerKey)
 	// For small len(keys), we can see a very high false positive rate. Fix it
 	// by enforcing a minimum bloom filter length.

@@ -448,10 +448,12 @@ func (s *SkipListIterator) Valid() bool { return s.n != nil }
 // Key returns the key at the current position.
 func (s *SkipListIterator) Key() []byte {
 	//implement me here
+	return nil
 }
 
 // Value returns value.
 func (s *SkipListIterator) Value() ValueStruct {
+	return ValueStruct{}
 	//implement me here
 }
 
@@ -482,7 +484,7 @@ func (s *SkipListIterator) SeekForPrev(target []byte) {
 	//implement me here
 }
 
-//定位到链表的第一个节点
+// 定位到链表的第一个节点
 func (s *SkipListIterator) SeekToFirst() {
 	//implement me here
 }
@@ -502,6 +504,7 @@ type UniIterator struct {
 }
 
 // FastRand is a fast thread local random function.
+//
 //go:linkname FastRand runtime.fastrand
 func FastRand() uint32
 
