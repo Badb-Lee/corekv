@@ -50,13 +50,19 @@ type node struct {
 	// can be atomically loaded and stored:
 	//   value offset: uint32 (bits 0-31)
 	//   value size  : uint16 (bits 32-63)
+	// 这里也是存储了偏移量和大小，1-31存储偏移量，32-64存储大小，这样的话有两个优点：
+	// 1、可以尽量节省空间
+	// 2、另外就是便于原子操作
 	value uint64
 
 	// A byte slice is 24 bytes. We are trying to save space here.
+	// 存储在arena中的偏移量
 	keyOffset uint32 // Immutable. No need to lock to access key.
-	keySize   uint16 // Immutable. No need to lock to access key.
+	// 存储在arena中的大小
+	keySize uint16 // Immutable. No need to lock to access key.
 
 	// Height of the tower.
+	// 表示在跳表的哪一层
 	height uint16
 
 	// Most nodes do not need to use the full height of the tower, since the
@@ -66,15 +72,21 @@ type node struct {
 	// is deliberately truncated to not include unneeded tower elements.
 	//
 	// All accesses to elements should use CAS operations, with no need to lock.
+	// 节点的next指针
 	tower [maxHeight]uint32
 }
 
 type Skiplist struct {
-	height     int32 // Current height. 1 <= height <= kMaxHeight. CAS.
+	// 当前高度
+	// 用cas来保证原子化的替代，避免使用锁
+	height int32 // Current height. 1 <= height <= kMaxHeight. CAS.
+	// 头节点
 	headOffset uint32
-	ref        int32
-	arena      *Arena
-	OnClose    func()
+	// 引用计数
+	ref int32
+	// 内存池
+	arena   *Arena
+	OnClose func()
 }
 
 // IncrRef increases the refcount
@@ -99,8 +111,10 @@ func (s *Skiplist) DecrRef() {
 
 func newNode(arena *Arena, key []byte, v ValueStruct, height int) *node {
 	// The base level is already allocated in the node struct.
+	// 作用就是，传入一个node返回一个空闲内存的起始地址，进行了内存对齐
 	nodeOffset := arena.putNode(height)
 	keyOffset := arena.putKey(key)
+	// 首先拿到的是value的offset 之后是value编码之后的大小
 	val := encodeValue(arena.putVal(v), v.EncodedSize())
 
 	node := arena.getNode(nodeOffset)
@@ -124,6 +138,7 @@ func decodeValue(value uint64) (valOffset uint32, valSize uint32) {
 // NewSkiplist makes a new empty skiplist, with a given arena size
 func NewSkiplist(arenaSize int64) *Skiplist {
 	arena := newArena(arenaSize)
+	// 这里的head必须拥有最大的层高，应为他必须连接后面的每一个节点
 	head := newNode(arena, nil, ValueStruct{}, maxHeight)
 	ho := arena.getNodeOffset(head)
 	return &Skiplist{
@@ -147,10 +162,12 @@ func (s *node) setValue(arena *Arena, vo uint64) {
 	atomic.StoreUint64(&s.value, vo)
 }
 
+// 这里是下一个节点的偏移量
 func (s *node) getNextOffset(h int) uint32 {
 	return atomic.LoadUint32(&s.tower[h])
 }
 
+// 设置一个新的next指针
 func (s *node) casNextOffset(h int, old, val uint32) bool {
 	return atomic.CompareAndSwapUint32(&s.tower[h], old, val)
 }
@@ -162,6 +179,7 @@ func (s *node) casNextOffset(h int, old, val uint32) bool {
 //	return n != nil && CompareKeys(key, n.key) > 0
 //}
 
+// 随机高度
 func (s *Skiplist) randomHeight() int {
 	h := 1
 	for h < maxHeight && FastRand() <= heightIncrease {
@@ -170,6 +188,7 @@ func (s *Skiplist) randomHeight() int {
 	return h
 }
 
+// 这个节点某一层的下一个节点
 func (s *Skiplist) getNext(nd *node, height int) *node {
 	return s.arena.getNode(nd.getNextOffset(height))
 }
@@ -192,16 +211,19 @@ func (s *Skiplist) findNear(key []byte, less bool, allowEqual bool) (*node, bool
 		next := s.getNext(x, level)
 		if next == nil {
 			// x.key < key < END OF LIST
+			// 表示这一层没有插入任何元素
 			if level > 0 {
 				// Can descend further to iterate closer to the end.
 				level--
 				continue
 			}
 			// Level=0. Cannot descend further. Let's return something that makes sense.
+			// 跳表中找不到这个值
 			if !less {
 				return nil, false
 			}
 			// Try to return x. Make sure it is not a head node.
+			// 跳表中只有头节点
 			if x == s.getHead() {
 				return nil, false
 			}
@@ -210,13 +232,16 @@ func (s *Skiplist) findNear(key []byte, less bool, allowEqual bool) (*node, bool
 
 		nextKey := next.key(s.arena)
 		cmp := CompareKeys(key, nextKey)
+		// 大于当前，往右移动
 		if cmp > 0 {
 			// x.key < next.key < key. We can continue to move right.
 			x = next
 			continue
 		}
+		// 等于
 		if cmp == 0 {
 			// x.key < key == next.key.
+			// 查找到的值
 			if allowEqual {
 				return next, true
 			}
@@ -258,23 +283,33 @@ func (s *Skiplist) findNear(key []byte, less bool, allowEqual bool) (*node, bool
 // Otherwise, outBefore.key < key < outAfter.key.
 func (s *Skiplist) findSpliceForLevel(key []byte, before uint32, level int) (uint32, uint32) {
 	for {
+		// 一共就三种情况
+		// 1、接在末尾
+		// 2、原地替换
+		// 3、在before和next之间
 		// Assume before.key < key.
+		// 找到上一个节点
 		beforeNode := s.arena.getNode(before)
+		// 找到下一个节点的偏移量
 		next := beforeNode.getNextOffset(level)
+		// 找到下一个节点
 		nextNode := s.arena.getNode(next)
 		if nextNode == nil {
 			return before, next
 		}
 		nextKey := nextNode.key(s.arena)
 		cmp := CompareKeys(key, nextKey)
+		// 如果想等的话，要原地替换
 		if cmp == 0 {
 			// Equality case.
 			return next, next
 		}
+		// 说明恰好处于before和next之间
 		if cmp < 0 {
 			// before.key < key < next.key. We are done for this level.
 			return before, next
 		}
+		// 要插入的大于next，向后寻找
 		before = next // Keep moving right on this level.
 	}
 }
@@ -294,6 +329,7 @@ func (s *Skiplist) Add(e *Entry) {
 		Version:   e.Version,
 	}
 
+	// 当前要插入的高度
 	listHeight := s.getHeight()
 	var prev [maxHeight + 1]uint32
 	var next [maxHeight + 1]uint32
@@ -301,7 +337,10 @@ func (s *Skiplist) Add(e *Entry) {
 	prev[listHeight] = s.headOffset
 	for i := int(listHeight) - 1; i >= 0; i-- {
 		// Use higher level to speed up for current level.
+		// 找到key在某一层的前后节点是什么
+		// 注意这里传的参数是上一层
 		prev[i], next[i] = s.findSpliceForLevel(key, prev[i+1], i)
+		// 原地替换的话
 		if prev[i] == next[i] {
 			vo := s.arena.putVal(v)
 			encValue := encodeValue(vo, v.EncodedSize())
@@ -312,12 +351,16 @@ func (s *Skiplist) Add(e *Entry) {
 	}
 
 	// We do need to create a new node.
+	//需要插入到什么高度
 	height := s.randomHeight()
+	// 要插入节点的初始化
 	x := newNode(s.arena, key, v, height)
 
 	// Try to increase s.height via CAS.
 	listHeight = s.getHeight()
+	// 如果随机高度已经大于当前高度了
 	for height > int(listHeight) {
+		//如果s.height的当前值等于listHeight，则将其原子地更新为height的值
 		if atomic.CompareAndSwapInt32(&s.height, listHeight, int32(height)) {
 			// Successfully increased skiplist.height.
 			break
@@ -333,20 +376,25 @@ func (s *Skiplist) Add(e *Entry) {
 				AssertTrue(i > 1) // This cannot happen in base level.
 				// We haven't computed prev, next for this level because height exceeds old listHeight.
 				// For these levels, we expect the lists to be sparse, so we can just search from head.
+				// 找到要插入节点的接缝处
 				prev[i], next[i] = s.findSpliceForLevel(key, s.headOffset, i)
 				// Someone adds the exact same key before we are able to do so. This can only happen on
 				// the base level. But we know we are not on the base level.
 				AssertTrue(prev[i] != next[i])
 			}
+			// 不用cas，因为是一个全新的节点不会有并发操作
 			x.tower[i] = next[i]
+			//但是pnode可能会有并发操作，这里使用cas
 			pnode := s.arena.getNode(prev[i])
 			if pnode.casNextOffset(i, next[i], s.arena.getNodeOffset(x)) {
 				// Managed to insert x between prev[i] and next[i]. Go to the next level.
 				break
 			}
 			// CAS failed. We need to recompute prev and next.
+			// 重新执行搜索时，尝试使用不同层没用，因为在prev和next之间插入操作不太可能发生很多，不同层搜索结果依然一样
 			// It is unlikely to be helpful to try to use a different level as we redo the search,
 			// because it is unlikely that lots of nodes are inserted between prev[i] and next[i].
+			// 这里是针对cas失败的情况，这里就直接原地更新
 			prev[i], next[i] = s.findSpliceForLevel(key, prev[i], i)
 			if prev[i] == next[i] {
 				AssertTruef(i == 0, "Equality can happen only on base level: %d", i)
@@ -389,6 +437,8 @@ func (s *Skiplist) findLast() *node {
 // Get gets the value associated with the key. It returns a valid value if it finds equal or earlier
 // version of the same key.
 func (s *Skiplist) Search(key []byte) ValueStruct {
+	// less为true代表比key小的最大值
+	// allowEqual为true：运行返回和key相等的值
 	n, _ := s.findNear(key, false, true) // findGreaterOrEqual.
 	if n == nil {
 		return ValueStruct{}
@@ -448,11 +498,13 @@ func (s *SkipListIterator) Valid() bool { return s.n != nil }
 // Key returns the key at the current position.
 func (s *SkipListIterator) Key() []byte {
 	//implement me here
+	return nil
 }
 
 // Value returns value.
 func (s *SkipListIterator) Value() ValueStruct {
 	//implement me here
+	return ValueStruct{}
 }
 
 // ValueUint64 returns the uint64 value of the current node.
@@ -482,7 +534,7 @@ func (s *SkipListIterator) SeekForPrev(target []byte) {
 	//implement me here
 }
 
-//定位到链表的第一个节点
+// 定位到链表的第一个节点
 func (s *SkipListIterator) SeekToFirst() {
 	//implement me here
 }
@@ -502,6 +554,7 @@ type UniIterator struct {
 }
 
 // FastRand is a fast thread local random function.
+//
 //go:linkname FastRand runtime.fastrand
 func FastRand() uint32
 
