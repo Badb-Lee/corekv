@@ -129,6 +129,7 @@ func appendFilter(key []uint32, bitsPerKey int) []byte {
 	for _, h := range key {
 		delta := h>>17 | h<<15
 		for j := uint32(0); j < k; j++ {
+			// 该hash函数在bloom过滤器中的位置
 			bitPos := h % uint32(nBits)
 			// bitPos/8得到在哪一行
 			// bitPos%8表示在那一列
