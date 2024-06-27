@@ -20,7 +20,9 @@ const (
 )
 
 type node struct {
-	// 将offset和length合并
+	// 将offset和length合并，优点如下：
+	// 1、节省内存空间
+	// 2、方便原始操作
 	value     uint64
 	keyOffset uint32
 	keySize   uint16
@@ -586,7 +588,7 @@ func (s *SkipListIterator) Value() ValueStruct {
 //
 //	return nil
 //}
-//
+
 //func NewSkipList() *SkipList {
 //	header := &Element{
 //		levels: make([]*Element, defaultMaxHeight),
