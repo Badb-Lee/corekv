@@ -56,6 +56,7 @@ func (s *Arena) allocate(sz uint32) uint32 {
 		}
 		// 如果小于要申请内存的大小
 		if growBy < sz {
+			// 主要是避免太小，太小的话就是频繁分配了
 			growBy = sz
 		}
 		// 很熟悉的操作，想不起来了，全部copy到新申请的地方
