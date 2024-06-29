@@ -29,7 +29,7 @@ func newWindowLRU(size int, data map[uint64]*list.Element) *windowLRU {
 
 func (lru *windowLRU) add(newitem storeItem) (eitem storeItem, evitced bool) {
 	if lru.list.Len() < lru.cap {
-		lru.data[newitem.key] = lru.list.PushFront(newitem)
+		lru.data[newitem.key] = lru.list.PushFront(&newitem)
 		return storeItem{}, false
 	}
 
@@ -53,4 +53,9 @@ func (lru *windowLRU) add(newitem storeItem) (eitem storeItem, evitced bool) {
 	lru.list.MoveToFront(evictItem)
 	return eitem, true
 
+}
+
+func (lru *windowLRU) get(v *list.Element) {
+	// 直接移到头部
+	lru.list.MoveToFront(v)
 }

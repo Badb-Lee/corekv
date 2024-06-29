@@ -34,7 +34,7 @@ func (slru *segmentedLRU) add(newitem storeItem) {
 	newitem.stage = 1
 	// 如果stageOne没满
 	if slru.stageOne.Len() < slru.StageOneCap || slru.Len() < slru.StageTwoCap+slru.StageOneCap {
-		slru.data[newitem.key] = slru.stageOne.PushBack(newitem)
+		slru.data[newitem.key] = slru.stageOne.PushBack(&newitem)
 		return
 	}
 
@@ -89,4 +89,13 @@ func (slru *segmentedLRU) get(v *list.Element) {
 }
 func (slru *segmentedLRU) Len() int {
 	return slru.stageTwo.Len() + slru.stageOne.Len()
+}
+
+func (slru *segmentedLRU) victim() *storeItem {
+	if slru.Len() < slru.StageOneCap+slru.StageTwoCap {
+		return nil
+	}
+
+	v := slru.stageOne.Back()
+	return v.Value.(*storeItem)
 }
