@@ -91,8 +91,10 @@ func appendFilter(keys []uint32, bitsPerKey int) []byte {
 	filter := make([]byte, nBytes+1)
 
 	for _, h := range keys {
+		// 以确保不同哈希函数的结果分布在布隆过滤器中更均匀
 		delta := h>>17 | h<<15
 		for j := uint32(0); j < k; j++ {
+			// 模运算确保 bitPos 落在布隆过滤器的位数组范围内
 			bitPos := h % uint32(nBits)
 			filter[bitPos/8] |= 1 << (bitPos % 8)
 			h += delta

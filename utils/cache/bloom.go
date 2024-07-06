@@ -36,6 +36,7 @@ func (f *BloomFilter) MayContain(h uint32) bool {
 		return false
 	}
 	k := f.k
+	// 什么jb？
 	if k > 30 {
 		// This is reserved for potentially new encodings for short Bloom filters.
 		// Consider it a match.
@@ -82,6 +83,8 @@ func (f *BloomFilter) AllowKey(k []byte) bool {
 	if f == nil {
 		return true
 	}
+	// 如果存在，返回true
+	// 如果不存在，插入，返回false
 	already := f.MayContainKey(k)
 	if !already {
 		f.InsertKey(k)
