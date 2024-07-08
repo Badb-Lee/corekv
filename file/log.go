@@ -25,7 +25,13 @@ func (ls *LogFile) write(bytes []byte) error {
 }
 
 type Options struct {
-	name string
+	name     string
+	FID      uint64
+	FileName string
+	Dir      string
+	Path     string
+	Flag     int
+	MaxSz    int
 }
 
 func openLogFile(opt *Options) *LogFile {
