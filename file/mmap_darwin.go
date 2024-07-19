@@ -30,8 +30,10 @@ import (
 
 // MmapFile represents an mmapd file and includes both the buffer to the data and the file descriptor.
 type MmapFile struct {
+	// 对应的是内存缓冲区
 	Data []byte
-	Fd   *os.File
+	// 对应的是磁盘
+	Fd *os.File
 }
 
 // OpenMmapFileUsing os
@@ -58,6 +60,9 @@ func OpenMmapFileUsing(fd *os.File, sz int, writable bool) (*MmapFile, error) {
 		return nil, errors.Wrapf(err, "while mmapping %s with size: %d", fd.Name(), fileSize)
 	}
 
+	// 如果fileSize == 0代表没刷盘
+	// 这时候sz = 0 且fileSize = 0，这时候没有走截断的操作，这时候buf为0
+	// 相当于这时候文件没有被创建，这时候做一次强制关联
 	if fileSize == 0 {
 		dir, _ := filepath.Split(filename)
 		go SyncDir(dir)

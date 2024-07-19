@@ -89,6 +89,7 @@ func (tb *tableBuilder) add(e *utils.Entry, isStale bool) {
 			// This key will be added to tableIndex and it is stale.
 			tb.staleDataSize += len(key) + 4 /* len */ + 4 /* offset */
 		}
+		// 将当前的block刷到内存缓冲区，以便一起刷到磁盘中
 		tb.finishBlock()
 		// Create a new block and start writing.
 		tb.curBlock = &block{
@@ -103,6 +104,8 @@ func (tb *tableBuilder) add(e *utils.Entry, isStale bool) {
 
 	var diffKey []byte
 	if len(tb.curBlock.baseKey) == 0 {
+		// 将 tb.curBlock.baseKey 切片重新切割到长度为0
+		//  key 的内容追加到 tb.curBlock.baseKey 中
 		tb.curBlock.baseKey = append(tb.curBlock.baseKey[:0], key...)
 		diffKey = key
 	} else {
@@ -112,8 +115,10 @@ func (tb *tableBuilder) add(e *utils.Entry, isStale bool) {
 	utils.CondPanic(!(len(diffKey) <= math.MaxUint16), fmt.Errorf("tableBuilder.add: len(diffKey) <= math.MaxUint16"))
 
 	h := header{
+		// overlap 表示相同的长度
 		overlap: uint16(len(key) - len(diffKey)),
-		diff:    uint16(len(diffKey)),
+		// diff表示差异长度
+		diff: uint16(len(diffKey)),
 	}
 
 	tb.curBlock.entryOffsets = append(tb.curBlock.entryOffsets, uint32(tb.curBlock.end))
@@ -244,7 +249,9 @@ func (tb *tableBuilder) keyDiff(newKey []byte) []byte {
 }
 
 // TODO: 这里存在多次的用户空间拷贝过程，需要优化
+// 这里的flush是先进行写入磁盘操作，对于合并是后续进行处理
 func (tb *tableBuilder) flush(lm *levelManager, tableName string) (t *table, err error) {
+	// 当前tabulider的对象信息，（包含布隆过滤器、索引和索引长度、builderdata对象、校验和）
 	bd := tb.done()
 	t = &table{lm: lm, fid: utils.FID(tableName)}
 	// 如果没有builder 则创打开一个已经存在的sst文件
@@ -253,6 +260,7 @@ func (tb *tableBuilder) flush(lm *levelManager, tableName string) (t *table, err
 		Dir:      lm.opt.WorkDir,
 		Flag:     os.O_CREATE | os.O_RDWR,
 		MaxSz:    int(bd.size)})
+	// 将数据拷贝到缓冲区
 	buf := make([]byte, bd.size)
 	written := bd.Copy(buf)
 	utils.CondPanic(written != len(buf), fmt.Errorf("tableBuilder.flush written != len(buf)"))
@@ -260,6 +268,7 @@ func (tb *tableBuilder) flush(lm *levelManager, tableName string) (t *table, err
 	if err != nil {
 		return nil, err
 	}
+	// 写入磁盘
 	copy(dst, buf)
 	return t, nil
 }

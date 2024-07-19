@@ -49,6 +49,7 @@ func openTable(lm *levelManager, tableName string, builder *tableBuilder) *table
 	)
 	fid := utils.FID(tableName)
 	// 对builder存在的情况 把buf flush到磁盘
+	// builder == nil 表示加载的过程，不是flush的过程
 	if builder != nil {
 		if t, err = builder.flush(lm, tableName); err != nil {
 			utils.Err(err)
@@ -57,6 +58,7 @@ func openTable(lm *levelManager, tableName string, builder *tableBuilder) *table
 	} else {
 		t = &table{lm: lm, fid: fid}
 		// 如果没有builder 则创打开一个已经存在的sst文件
+		// 这里打开的意思就是磁盘中的数据也和内存进行了关联，但是没有进行解析，还是一个普通的字节数组
 		t.ss = file.OpenSStable(&file.Options{
 			FileName: tableName,
 			Dir:      lm.opt.WorkDir,
@@ -97,6 +99,7 @@ func (t *table) Serach(key []byte, maxVs *uint64) (entry *utils.Entry, err error
 	iter := t.NewIterator(&utils.Options{})
 	defer iter.Close()
 
+	// 寻找在table的哪一个block
 	iter.Seek(key)
 	if !iter.Valid() {
 		return nil, utils.ErrKeyNotFound
@@ -315,12 +318,15 @@ func (it *tableIterator) seekToLast() {
 // 如果在 idx-1 的block中未找到key 那才可能在 idx 中
 // 如果都没有，则当前key不再此table
 func (it *tableIterator) Seek(key []byte) {
+	// ko来记录当前块的偏移量
 	var ko pb.BlockOffset
 	idx := sort.Search(len(it.t.ss.Indexs().GetOffsets()), func(idx int) bool {
 		utils.CondPanic(!it.t.offsets(&ko, idx), fmt.Errorf("tableutils.Seek idx < 0 || idx > len(index.GetOffsets()"))
+		// 虽然还没大于，但是已经是最后一块了，这时候也需要返回了
 		if idx == len(it.t.ss.Indexs().GetOffsets()) {
 			return true
 		}
+		// 如果当前块的最小偏移量大于key，说明在上一个块中
 		return utils.CompareKeys(ko.GetKey(), key) > 0
 	})
 	if idx == 0 {

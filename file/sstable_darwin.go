@@ -1,3 +1,4 @@
+//go:build darwin
 // +build darwin
 
 // Copyright 2021 hardcore-os Project Authors
@@ -52,8 +53,12 @@ func OpenSStable(opt *Options) *SSTable {
 
 // Init 初始化
 func (ss *SSTable) Init() error {
+	// 其实是一个pb，序列化好的pb
+	// blockoffset表示的是sstable文件里面每一个首地址的offset是多少，首地址的key是多少
 	var ko *pb.BlockOffset
 	var err error
+	// 返回的是sstable文件里面第一个block的keyoffset
+	// flush的时候是从offset = 0开始写的
 	if ko, err = ss.initTable(); err != nil {
 		return err
 	}
@@ -63,10 +68,24 @@ func (ss *SSTable) Init() error {
 	ss.createdAt = time.Unix(statType.Atimespec.Sec, statType.Atimespec.Nsec)
 	// init min key
 	keyBytes := ko.GetKey()
+	// 获得sstable的最小key
 	minKey := make([]byte, len(keyBytes))
+	// 后面的值会有修改
 	copy(minKey, keyBytes)
 	ss.minKey = minKey
 	ss.maxKey = minKey
+
+	//init max key
+	//blockLen := len(ss.idxTables.Offsets)
+	// 这里主要是获得最大的key
+	//ko = ss.idxTables.Offsets[blockLen-1]
+	// 获取最后一个block的第一个key作为maxkey
+	// 为什么第一个key是最大的key？而不是最后一个，这个就是写的时候的一个细节
+	//keyBytes = ko.GetKey()
+	//maxKey := make([]byte, 0)
+	//copy(maxKey, keyBytes)
+	//ss.maxKey = maxKey
+
 	return nil
 }
 
@@ -75,39 +94,51 @@ func (ss *SSTable) SetMaxKey(maxKey []byte) {
 	ss.maxKey = maxKey
 }
 func (ss *SSTable) initTable() (bo *pb.BlockOffset, err error) {
+	// 把缓冲区加载进来，只需要对内存进行操作即可
 	readPos := len(ss.f.Data)
 
 	// Read checksum len from the last 4 bytes.
 	readPos -= 4
+	// 获取checkSum的len编码
 	buf := ss.readCheckError(readPos, 4)
+	// 解码成int对象
 	checksumLen := int(utils.BytesToU32(buf))
 	if checksumLen < 0 {
 		return nil, errors.New("checksum length less than zero. Data corrupted")
 	}
 
 	// Read checksum.
+	// 其实这里也是4字节，但是为了对以后进行兼容，比如变为uint64位的，这里直接减去checksumLen
 	readPos -= checksumLen
 	expectedChk := ss.readCheckError(readPos, checksumLen)
 
 	// Read index size from the footer.
 	readPos -= 4
 	buf = ss.readCheckError(readPos, 4)
+	// 获取索引长度
 	ss.idxLen = int(utils.BytesToU32(buf))
 
 	// Read index.
 	readPos -= ss.idxLen
+	// 得到索引的起始位置
 	ss.idxStart = readPos
+	// 得到索引的data
 	data := ss.readCheckError(readPos, ss.idxLen)
+	// 用校验和检验索引的data和checkSum是不是一样
+	// 这里校验的是索引块大小，而不是全部block的大小，主要是一个性能的权衡
 	if err := utils.VerifyChecksum(data, expectedChk); err != nil {
 		return nil, errors.Wrapf(err, "failed to verify checksum for table: %s", ss.f.Fd.Name())
 	}
+
 	indexTable := &pb.TableIndex{}
 	if err := proto.Unmarshal(data, indexTable); err != nil {
 		return nil, err
 	}
+	// 经过解析，获得了index的data值，这里包括block_offset、bloom_filter、max_version、key_count
 	ss.idxTables = indexTable
-
+	// 判断是否使用了bloomfilter
 	ss.hasBloomFilter = len(indexTable.BloomFilter) > 0
+	// 返回第0个偏移位，这个其实就是block0，
 	if len(indexTable.GetOffsets()) > 0 {
 		return indexTable.GetOffsets()[0], nil
 	}
@@ -146,12 +177,14 @@ func (ss *SSTable) HasBloomFilter() bool {
 
 func (ss *SSTable) read(off, sz int) ([]byte, error) {
 	if len(ss.f.Data) > 0 {
+		// 越界了
 		if len(ss.f.Data[off:]) < sz {
 			return nil, io.EOF
 		}
 		return ss.f.Data[off : off+sz], nil
 	}
 
+	// 如果mmap映射的内存小于需要的内存，也就是说没读到，这时候就需要从磁盘中读取
 	res := make([]byte, sz)
 	_, err := ss.f.Fd.ReadAt(res, int64(off))
 	return res, err

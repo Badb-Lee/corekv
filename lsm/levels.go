@@ -2,12 +2,11 @@ package lsm
 
 import (
 	"bytes"
+	"github.com/hardcore-os/corekv/file"
+	"github.com/hardcore-os/corekv/utils"
 	"sort"
 	"sync"
 	"sync/atomic"
-
-	"github.com/hardcore-os/corekv/file"
-	"github.com/hardcore-os/corekv/utils"
 )
 
 // initLevelManager 初始化函数
@@ -16,9 +15,9 @@ func (lsm *LSM) initLevelManager(opt *Options) *levelManager {
 	lm.compactState = lsm.newCompactStatus()
 	lm.opt = opt
 	// 读取manifest文件构建管理器
-	if err := lm.loadManifest(); err != nil {
-		panic(err)
-	}
+	//if err := lm.loadManifest(); err != nil {
+	//	panic(err)
+	//}
 	lm.build()
 	return lm
 }
@@ -146,7 +145,7 @@ func (lm *levelManager) flush(immutable *memTable) (err error) {
 	return
 }
 
-//--------- level处理器 -------
+// --------- level处理器 -------
 type levelHandler struct {
 	sync.RWMutex
 	levelNum       int
