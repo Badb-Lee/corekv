@@ -14,10 +14,10 @@ func (lsm *LSM) initLevelManager(opt *Options) *levelManager {
 	lm := &levelManager{lsm: lsm} // 反引用
 	lm.compactState = lsm.newCompactStatus()
 	lm.opt = opt
-	// 读取manifest文件构建管理器
-	//if err := lm.loadManifest(); err != nil {
-	//	panic(err)
-	//}
+	//读取manifest文件构建管理器
+	if err := lm.loadManifest(); err != nil {
+		panic(err)
+	}
 	lm.build()
 	return lm
 }
@@ -83,6 +83,7 @@ func (lm *levelManager) loadManifest() (err error) {
 	return err
 }
 func (lm *levelManager) build() error {
+	// 创建levels数组
 	lm.levels = make([]*levelHandler, 0, lm.opt.MaxLevelNum)
 	for i := 0; i < lm.opt.MaxLevelNum; i++ {
 		lm.levels = append(lm.levels, &levelHandler{
@@ -92,8 +93,10 @@ func (lm *levelManager) build() error {
 		})
 	}
 
+	// 已经load好的manifest
 	manifest := lm.manifestFile.GetManifest()
 	// 对比manifest 文件的正确性
+	// loadidmap会截取所有的.sst文件，append到map中，转换为fid，现在就会有当前目录下所有的sst文件
 	if err := lm.manifestFile.RevertToManifest(utils.LoadIDMap(lm.opt.WorkDir)); err != nil {
 		return err
 	}
@@ -111,6 +114,7 @@ func (lm *levelManager) build() error {
 		lm.levels[tableInfo.Level].addSize(t) // 记录一个level的文件总大小
 	}
 	// 对每一层进行排序
+	// 按照fid进行排序
 	for i := 0; i < lm.opt.MaxLevelNum; i++ {
 		lm.levels[i].Sort()
 	}
@@ -134,6 +138,7 @@ func (lm *levelManager) flush(immutable *memTable) (err error) {
 	}
 	// 创建一个 table 对象
 	table := openTable(lm, sstName, builder)
+	// 第一个是行号
 	err = lm.manifestFile.AddTableMeta(0, &file.TableMeta{
 		ID:       fid,
 		Checksum: []byte{'m', 'o', 'c', 'k'},
