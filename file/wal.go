@@ -74,6 +74,7 @@ func OpenWalFile(opt *Options) *WalFile {
 func (wf *WalFile) Write(entry *utils.Entry) error {
 	// 落预写日志简单的同步写即可
 	// 序列化为磁盘结构
+	// 这里没有flush，这都是在内存上进行的操作
 	wf.lock.Lock()
 	plen := utils.WalCodec(wf.buf, entry)
 	buf := wf.buf.Bytes()
@@ -97,6 +98,7 @@ func (wf *WalFile) Iterate(readOnly bool, offset uint32, fn utils.LogEntry) (uin
 loop:
 	for {
 		e, err := read.MakeEntry(reader)
+		// 错误判断
 		switch {
 		case err == io.EOF:
 			break loop
@@ -170,6 +172,7 @@ func (r *SafeRead) MakeEntry(reader io.Reader) (*utils.Entry, error) {
 	e.Offset = r.RecordOffset
 	e.Hlen = hlen
 	buf := make([]byte, h.KeyLen+h.ValueLen)
+	// 分散聚集io
 	if _, err := io.ReadFull(tee, buf[:]); err != nil {
 		if err == io.EOF {
 			err = utils.ErrTruncate
