@@ -14,7 +14,7 @@ type LSM struct {
 	maxMemFID  uint32
 }
 
-//Options _
+// Options _
 type Options struct {
 	WorkDir      string
 	MemTableSize int64
@@ -72,9 +72,11 @@ func NewLSM(opt *Options) *LSM {
 
 // StartCompacter _
 func (lsm *LSM) StartCompacter() {
+	// 配置，几个compacter
 	n := lsm.option.NumCompactors
 	lsm.closer.Add(n)
 	for i := 0; i < n; i++ {
+		// 启动compacter
 		go lsm.levels.runCompacter(i)
 	}
 }

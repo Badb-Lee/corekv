@@ -276,6 +276,7 @@ func (lh *levelHandler) overlappingTables(_ levelHandlerRLocked, kr keyRange) (i
 	if len(kr.left) == 0 || len(kr.right) == 0 {
 		return 0, 0
 	}
+	// 这里用到了二分查找
 	left := sort.Search(len(lh.tables), func(i int) bool {
 		return utils.CompareKeys(kr.left, lh.tables[i].ss.MaxKey()) <= 0
 	})
@@ -304,12 +305,14 @@ func (lh *levelHandler) replaceTables(toDel, toAdd []*table) error {
 			newTables = append(newTables, t)
 			continue
 		}
+		// 减少这一行的size和这一行的脏key
 		lh.subtractSize(t)
 	}
 
 	// Increase totalSize first.
 	for _, t := range toAdd {
 		lh.addSize(t)
+		// 增加引用
 		t.IncrRef()
 		newTables = append(newTables, t)
 	}
@@ -320,6 +323,7 @@ func (lh *levelHandler) replaceTables(toDel, toAdd []*table) error {
 		return utils.CompareKeys(lh.tables[i].ss.MinKey(), lh.tables[i].ss.MinKey()) < 0
 	})
 	lh.Unlock() // s.Unlock before we DecrRef tables -- that can be slow.
+	// 减少引用
 	return decrRefs(toDel)
 }
 

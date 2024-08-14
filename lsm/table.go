@@ -380,6 +380,7 @@ func (t *table) StaleDataSize() uint32 { return t.ss.Indexs().StaleDataSize }
 // DecrRef decrements the refcount and possibly deletes the table
 func (t *table) DecrRef() error {
 	newRef := atomic.AddInt32(&t.ref, -1)
+	// 如果说引用为0，先从缓存中删除，再从磁盘中删除
 	if newRef == 0 {
 		// TODO 从缓存中删除
 		for i := 0; i < len(t.ss.Indexs().GetOffsets()); i++ {
