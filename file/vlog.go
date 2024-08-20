@@ -26,14 +26,18 @@ func (lf *LogFile) Open(opt *Options) error {
 	var err error
 	lf.FID = uint32(opt.FID)
 	lf.Lock = sync.RWMutex{}
+	// 打开mmap
 	lf.f, err = OpenMmapFile(opt.FileName, os.O_CREATE|os.O_RDWR, opt.MaxSz)
 	utils.Panic2(nil, err)
+	// 取出info对象
 	fi, err := lf.f.Fd.Stat()
 	if err != nil {
 		return utils.WarpErr("Unable to run file.Stat", err)
 	}
 	// 获取文件尺寸
 	sz := fi.Size()
+	// 这里判断是因为offset是uint32的
+	// 为什么
 	utils.CondPanic(sz > math.MaxUint32, fmt.Errorf("file size: %d greater than %d",
 		uint32(sz), uint32(math.MaxUint32)))
 	lf.size = uint32(sz)
@@ -48,7 +52,9 @@ func (lf *LogFile) Read(p *utils.ValuePtr) (buf []byte, err error) {
 	// 4GB, which overflows the uint32 during conversion to make the size 0,
 	// causing the read to fail with ErrEOF. See issue #585.
 	size := int64(len(lf.f.Data))
+	// 值的大小
 	valsz := p.Len
+	// vlog文件多大
 	lfsz := atomic.LoadUint32(&lf.size)
 	if int64(offset) >= size || int64(offset+valsz) > size ||
 		// Ensure that the read is within the file's actual size. It might be possible that
@@ -75,6 +81,10 @@ func (lf *LogFile) DoneWriting(offset uint32) error {
 
 	// TODO: Confirm if we need to run a file sync after truncation.
 	// Truncation must run after unmapping, otherwise Windows would crap itself.
+	// 截断操作，这里就是下面这种情况：
+	// 如果配置大小是4g，但是最大entry的大小已经超过配置了
+	// 这时候可能只写了1g，后面还有3g空间
+	// 这个时候就把后面的3g释放掉，做截断，后面还能继续用
 	if err := lf.f.Truncature(int64(offset)); err != nil {
 		return errors.Wrapf(err, "Unable to truncate file: %q", lf.FileName())
 	}
@@ -174,6 +184,7 @@ func (lf *LogFile) EncodeEntry(e *utils.Entry, buf *bytes.Buffer, offset uint32)
 }
 func (lf *LogFile) DecodeEntry(buf []byte, offset uint32) (*utils.Entry, error) {
 	var h utils.Header
+	// 头的长度
 	hlen := h.Decode(buf)
 	kv := buf[hlen:]
 	e := &utils.Entry{

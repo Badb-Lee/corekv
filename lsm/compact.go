@@ -842,7 +842,6 @@ func (lm *levelManager) fillTablesL0ToLbase(cd *compactDef) bool {
 	copy(cd.bot, cd.nextLevel.tables[left:right])
 
 	if len(cd.bot) == 0 {
-		// 如果说lbase层没有什么值得压缩的，这时候就尝试l0和l0进行压缩
 		cd.nextRange = cd.thisRange
 	} else {
 		cd.nextRange = getKeyRange(cd.bot...)
@@ -961,6 +960,7 @@ func (lm *levelManager) updateDiscardStats(discardStats map[uint32]int64) {
 	select {
 	case *lm.lsm.option.DiscardStatsCh <- discardStats:
 	default:
+		// 这里加入default的目的是为了阻塞
 	}
 }
 
@@ -970,6 +970,7 @@ func (lm *levelManager) subcompact(it utils.Iterator, kr keyRange, cd compactDef
 	var lastKey []byte
 	// 更新 discardStats
 	discardStats := make(map[uint32]int64)
+	// 结束的时候进行更新
 	defer func() {
 		lm.updateDiscardStats(discardStats)
 	}()
@@ -977,6 +978,7 @@ func (lm *levelManager) subcompact(it utils.Iterator, kr keyRange, cd compactDef
 		if e.Meta&utils.BitValuePointer > 0 {
 			var vp utils.ValuePtr
 			vp.Decode(e.Value)
+			// 这里是vlog的fid，而非sst的fid
 			discardStats[vp.Fid] += int64(vp.Len)
 		}
 	}
@@ -1012,6 +1014,7 @@ func (lm *levelManager) subcompact(it utils.Iterator, kr keyRange, cd compactDef
 			// 判断是否是过期内容，是的话就删除
 			switch {
 			case isExpired:
+				// 如果是值指针，就更新这个文件的脏key字节数
 				updateStats(it.Item().Entry())
 				builder.AddStaleKey(it.Item().Entry())
 			default:
