@@ -147,6 +147,7 @@ func (db *DB) Get(key []byte) (*utils.Entry, error) {
 		entry *utils.Entry
 		err   error
 	)
+	// 传递当前的时间戳
 	key = utils.KeyWithTs(key, math.MaxUint32)
 	// 从LSM中查询entry，这时不确定entry是不是值指针
 	if entry, err = db.lsm.Get(key); err != nil {
@@ -210,6 +211,7 @@ func (db *DB) shouldWriteValueToLSM(e *utils.Entry) bool {
 }
 
 func (db *DB) sendToWriteCh(entries []*utils.Entry) (*request, error) {
+	// 阻塞的write+1
 	if atomic.LoadInt32(&db.blockWrites) == 1 {
 		return nil, utils.ErrBlockedWrites
 	}
@@ -218,38 +220,44 @@ func (db *DB) sendToWriteCh(entries []*utils.Entry) (*request, error) {
 		size += int64(e.EstimateSize(int(db.opt.ValueThreshold)))
 		count++
 	}
+	// 是否应该频率控制
 	if count >= db.opt.MaxBatchCount || size >= db.opt.MaxBatchSize {
 		return nil, utils.ErrTxnTooBig
 	}
 
 	// TODO 尝试使用对象复用，后面entry对象也应该使用
 	req := requestPool.Get().(*request)
+	// 清空之前使用的一些字段
 	req.reset()
 	req.Entries = entries
 	req.Wg.Add(1)
+	// 引用 + 1
 	req.IncrRef()     // for db write
 	db.writeCh <- req // Handled in doWrites.
 	return req, nil
 }
 
-//   Check(kv.BatchSet(entries))
+// Check(kv.BatchSet(entries))
 func (db *DB) batchSet(entries []*utils.Entry) error {
 	req, err := db.sendToWriteCh(entries)
 	if err != nil {
 		return err
 	}
 
+	// 这里用了group wait里面的组件来实现的
 	return req.Wait()
 }
 
 func (db *DB) doWrites(lc *utils.Closer) {
 	defer lc.Done()
+	// 对异步写的阻塞，只有写完了才会释放
 	pendingCh := make(chan struct{}, 1)
 
 	writeRequests := func(reqs []*request) {
 		if err := db.writeRequests(reqs); err != nil {
 			utils.Err(fmt.Errorf("writeRequests: %v", err))
 		}
+		// 只有写完成了才会释放掉pendingCh
 		<-pendingCh
 	}
 
@@ -269,7 +277,9 @@ func (db *DB) doWrites(lc *utils.Closer) {
 			reqs = append(reqs, r)
 			reqLen.Set(int64(len(reqs)))
 
+			// 如果大于写容量三倍
 			if len(reqs) >= 3*utils.KVWriteChCapacity {
+				// 先阻塞住，为了写量的控制
 				pendingCh <- struct{}{} // blocking.
 				goto writeCase
 			}
@@ -277,8 +287,10 @@ func (db *DB) doWrites(lc *utils.Closer) {
 			select {
 			// Either push to pending, or continue to pick from writeCh.
 			case r = <-db.writeCh:
+				// 没有阻塞
 			case pendingCh <- struct{}{}:
 				goto writeCase
+				//
 			case <-lc.CloseSignal:
 				goto closedCase
 			}
@@ -289,6 +301,7 @@ func (db *DB) doWrites(lc *utils.Closer) {
 		// Don't close the writeCh, because it has be used in several places.
 		for {
 			select {
+			// 关闭之前，把数据全部拿出来
 			case r = <-db.writeCh:
 				reqs = append(reqs, r)
 			default:
@@ -319,6 +332,7 @@ func (db *DB) writeRequests(reqs []*request) error {
 	}
 	err := db.vlog.write(reqs)
 	if err != nil {
+		// 这里表示就算出错，也会把每个req拿出来，也进行释放
 		done(err)
 		return err
 	}
@@ -349,6 +363,7 @@ func (db *DB) writeToLSM(b *request) error {
 	}
 
 	for i, entry := range b.Entries {
+		// 为什么要进行这样一个判断，因为value可能更新了，也就是说被用户更新成一个更小的值
 		if db.shouldWriteValueToLSM(entry) { // Will include deletion / tombstone case.
 			entry.Meta = entry.Meta &^ utils.BitValuePointer
 		} else {

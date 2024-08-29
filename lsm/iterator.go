@@ -38,11 +38,15 @@ func (it *Item) Entry() *utils.Entry {
 func (lsm *LSM) NewIterators(opt *utils.Options) []utils.Iterator {
 	iter := &Iterator{}
 	iter.iters = make([]utils.Iterator, 0)
+	// memtable的迭代器
 	iter.iters = append(iter.iters, lsm.memTable.NewIterator(opt))
+	// 所有immutable的迭代器
 	for _, imm := range lsm.immutables {
 		iter.iters = append(iter.iters, imm.NewIterator(opt))
 	}
+	// levels中的迭代器
 	iter.iters = append(iter.iters, lsm.levels.iterators()...)
+	// 拿到了内存和磁盘中的所有迭代器
 	return iter.iters
 }
 func (iter *Iterator) Next() {
@@ -276,6 +280,7 @@ func (n *node) setKey() {
 			n.entry = n.concat.Item().Entry()
 		}
 	default:
+		// merge 和 concat都不是，说明是table类型的
 		n.valid = n.iter.Valid()
 		if n.valid {
 			n.entry = n.iter.Item().Entry()
@@ -420,6 +425,7 @@ func NewMergeIterator(iters []utils.Iterator, reverse bool) utils.Iterator {
 		return &Iterator{}
 	case 1:
 		return iters[0]
+	// 也就是说mergeIterator最多持有两个迭代器
 	case 2:
 		mi := &MergeIterator{
 			reverse: reverse,

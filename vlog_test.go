@@ -64,7 +64,7 @@ func TestVlogBase(t *testing.T) {
 	b := new(request)
 	b.Entries = []*utils.Entry{e1, e2}
 
-	// 直接写入vlog中
+	// 直接写入vlog中f
 	log.write([]*request{b})
 	require.Len(t, b.Ptrs, 2)
 	t.Logf("Pointer written: %+v %+v\n", b.Ptrs[0], b.Ptrs[1])

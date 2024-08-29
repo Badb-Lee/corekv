@@ -331,22 +331,30 @@ func (vlog *valueLog) close() error {
 }
 
 func (vlog *valueLog) runGC(discardRatio float64, head *utils.ValuePtr) error {
+	// 为什么进行select？因为只允许有一个协程进行gc
+	// 这里用default也是非阻塞的，如果这时候不能进行gc，直接返回一个error
 	select {
+	// 这里表示给通道发送一个空的结构体，用作占位符
 	case vlog.garbageCh <- struct{}{}:
 		// Pick a log file for GC.
+		// defer的执行时机：在return之前，前面都之前之后
 		defer func() {
 			// 通过一个channel来控制一次仅运行一个GC任务
+			// 从通道中接收一个值，表示释放通道的独占权
 			<-vlog.garbageCh
 		}()
 
 		var err error
+		// 根据头选择vlog文件
 		files := vlog.pickLog(head)
+		// 这时候说明不需要重写
 		if len(files) == 0 {
 			return utils.ErrNoRewrite
 		}
 		tried := make(map[uint32]bool)
 		for _, lf := range files {
 			//消重一下,防止随机策略和统计策略返回同一个fid
+			// 因随机可能会产生相同的fid
 			if _, done := tried[lf.FID]; done {
 				continue
 			}
@@ -363,17 +371,22 @@ func (vlog *valueLog) runGC(discardRatio float64, head *utils.ValuePtr) error {
 
 func (vlog *valueLog) doRunGC(lf *file.LogFile, discardRatio float64) (err error) {
 	// 退出的时候把统计的discard清空
+	// 开始就把回收写好，这个go的哲学 666
 	defer func() {
 		if err == nil {
 			vlog.lfDiscardStats.Lock()
+			// 把删除的fid清除掉
 			delete(vlog.lfDiscardStats.m, lf.FID)
 			vlog.lfDiscardStats.Unlock()
 		}
 	}()
+	// 采样对象
 	s := &sampler{
-		lf:            lf,
-		countRatio:    0.01, // 1% of num entries.
-		sizeRatio:     0.1,  // 10% of the file as window.
+		lf: lf,
+		// 收集比例
+		countRatio: 0.01, // 1% of num entries.
+		// 窗口比例
+		sizeRatio:     0.1, // 10% of the file as window.
 		fromBeginning: false,
 	}
 
@@ -400,6 +413,7 @@ func (vlog *valueLog) rewrite(f *file.LogFile) error {
 	var count, moved int
 	fe := func(e *utils.Entry) error {
 		count++
+		// 每十万条输出一次
 		if count%100000 == 0 {
 			fmt.Printf("Processing entry %d\n", count)
 		}
@@ -408,13 +422,17 @@ func (vlog *valueLog) rewrite(f *file.LogFile) error {
 		if err != nil {
 			return err
 		}
+
+		// 如果是脏key
 		if utils.DiscardEntry(e, vs) {
 			return nil
 		}
 
+		//如果是空val
 		if len(vs.Value) == 0 {
 			return errors.Errorf("Empty value: %+v", vs)
 		}
+		// 这里一定是值指针了，否则DiscardEntry就true了
 		var vp utils.ValuePtr
 		vp.Decode(vs.Value)
 
@@ -433,18 +451,22 @@ func (vlog *valueLog) rewrite(f *file.LogFile) error {
 			ne.ExpiresAt = e.ExpiresAt
 			ne.Key = append([]byte{}, e.Key...)
 			ne.Value = append([]byte{}, e.Value...)
+
 			es := int64(ne.EstimateSize(vlog.db.opt.ValueLogFileSize))
 			// Consider size of value as well while considering the total size
 			// of the batch. There have been reports of high memory usage in
 			// rewrite because we don't consider the value size. See #1292.
+
 			es += int64(len(e.Value))
 
 			// Ensure length and size of wb is within transaction limits.
+			// buff数量或者size大于阈值，进行批量写入
 			if int64(len(wb)+1) >= vlog.opt.MaxBatchCount ||
 				size+es >= vlog.opt.MaxBatchSize {
 				if err := vlog.db.batchSet(wb); err != nil {
 					return err
 				}
+				// 重置
 				size = 0
 				wb = wb[:0]
 			}
@@ -461,6 +483,8 @@ func (vlog *valueLog) rewrite(f *file.LogFile) error {
 		return err
 	}
 
+	// 上面的wb里面还有数据，但是没有满足阈值条件
+	// 下面代码就是执行wb里面的数据
 	batchSize := 1024
 	var loops int
 	for i := 0; i < len(wb); {
@@ -473,6 +497,7 @@ func (vlog *valueLog) rewrite(f *file.LogFile) error {
 			end = len(wb)
 		}
 		if err := vlog.db.batchSet(wb[i:end]); err != nil {
+			// 出现背压情况
 			if err == utils.ErrTxnTooBig {
 				// Decrease the batch size to half.
 				batchSize = batchSize / 2
@@ -491,9 +516,12 @@ func (vlog *valueLog) rewrite(f *file.LogFile) error {
 			vlog.filesLock.Unlock()
 			return errors.Errorf("Unable to find fid: %d", f.FID)
 		}
+		// 现在在这个vlog上活跃的迭代器有多少个
+		// 如果其他的迭代器还在这个vlog上进行读取，那不能进行删除
 		if vlog.iteratorCount() == 0 {
+			// 先把这个file在map中删掉
 			delete(vlog.filesMap, f.FID)
-			//deleteFileNow = true
+			deleteFileNow = true
 		} else {
 			vlog.filesToBeDeleted = append(vlog.filesToBeDeleted, f.FID)
 		}
@@ -1191,6 +1219,7 @@ func (req *request) reset() {
 func (vlog *valueLog) pickLog(head *utils.ValuePtr) (files []*file.LogFile) {
 	vlog.filesLock.RLock()
 	defer vlog.filesLock.RUnlock()
+	// 已经被删除的会被去除
 	fids := vlog.sortedFids()
 	switch {
 	// 只有一个log文件那不需要进行GC了
@@ -1204,7 +1233,9 @@ func (vlog *valueLog) pickLog(head *utils.ValuePtr) (files []*file.LogFile) {
 
 	// 创建一个候选对象
 	candidate := struct {
-		fid     uint32
+		// fid
+		fid uint32
+		// 可丢弃的kv数
 		discard int64
 	}{math.MaxUint32, 0}
 	// 加锁遍历fids，选择小于等于head fid的列表中discard统计最大的那个log文件
@@ -1222,6 +1253,7 @@ func (vlog *valueLog) pickLog(head *utils.ValuePtr) (files []*file.LogFile) {
 	vlog.lfDiscardStats.RUnlock()
 
 	// 说明这是一个有效候选
+	// 因为candidate初始化是math.MaxUint32，这里其实就是判断candidate是否后续被赋值了
 	if candidate.fid != math.MaxUint32 { // Found a candidate
 		files = append(files, vlog.filesMap[candidate.fid])
 	}
@@ -1241,6 +1273,7 @@ func (vlog *valueLog) pickLog(head *utils.ValuePtr) (files []*file.LogFile) {
 	if idx > 0 {
 		idx = rand.Intn(idx + 1) // Another level of rand to favor smaller fids.
 	}
+	// 当head为0的时候idx永远为0
 	files = append(files, vlog.filesMap[fids[idx]])
 	return files
 }
@@ -1301,6 +1334,10 @@ func (vlog *valueLog) sample(samp *sampler, discardRatio float64) (*reason, erro
 		if err != nil {
 			return err
 		}
+		// 判断是否为脏key
+		// 是否删除
+		// 是否过期
+		// 是否还是值指针
 		if utils.DiscardEntry(e, entry) {
 			r.discard += esz
 			return nil
@@ -1310,11 +1347,13 @@ func (vlog *valueLog) sample(samp *sampler, discardRatio float64) (*reason, erro
 		utils.CondPanic(len(entry.Value) <= 0, fmt.Errorf("len(entry.Value) <= 0"))
 		vp.Decode(entry.Value)
 
+		// value现在在一个新的vlog文件中
 		if vp.Fid > samp.lf.FID {
 			// Value is present in a later log. Discard.
 			r.discard += esz
 			return nil
 		}
+		// 新的value在同一个vlog当中，但是靠后
 		if vp.Offset > e.Offset {
 			// Value is present in a later offset, but in the same log.
 			r.discard += esz

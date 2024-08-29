@@ -18,9 +18,11 @@ package utils
 type Iterator interface {
 	Next()
 	Valid() bool
+	// 从第一个开始
 	Rewind()
 	Item() Item
 	Close() error
+	// 找到某个key值
 	Seek(key []byte)
 }
 
